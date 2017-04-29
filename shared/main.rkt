@@ -2,7 +2,7 @@
 
 (provide (all-defined-out))
 
-(define max-winners   6)
+(define max-winners   (make-parameter 6))
 (define cancelled-str "CANCELLED")
 
 (define (select* key* ht) (for/list ([key key*]) (select key ht)))
@@ -150,7 +150,7 @@ parse-show goes block by block, using heuristic tests to classify blocks and dis
     [else (print-unrecognized str) #f]))
 
 (define (mk-points place entry-count)
-  (let* ([winner-count (min entry-count max-winners)]
+  (let* ([winner-count (min entry-count (max-winners))]
          [points (match place
                    ['GC         6]
                    ['RGC        5]

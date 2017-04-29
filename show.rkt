@@ -28,6 +28,20 @@ Entry m
 END
 )
 
+If you want to change the maximum division size and/or maximum number of winners
+from the defaults of 20 and 6, respectively, you can include the optional
+parameters #:max-division-size and/or #:max-winners, respectively. So instead of
+
+(!
+...
+)
+
+you would type
+
+(! #:max-division-size 30 #:max-winners 10
+...
+)
+
 The subclass clause can be omitted when a class has no subclasses, in which case
 the program won't generate a champion or reserve champion. Also, you can suppress
 CH/RC generation by adding a "no-champs" clause before a block like so:
@@ -51,20 +65,26 @@ inserting "super" clauses:
 (require "shared/main.rkt"
          srfi/2)
 
-(define (! str)
-  (let* ([block*            (listing->block* str)]
-         [block+class*      (for/list ([block block*])
-                                      (if (class-block? block)
-                                          (class-block->class block)
-                                          block))]
-         [class*            (filter class? block+class*)]
-         [superclass+class* (for/list ([block/class block+class*])
-                                      (if (class? block/class)
-                                          block/class
-                                          (superclass-block->superclass class* block/class)))]
-         [output-str*       (map format-output superclass+class*)]
-         [output            (string-append* (add-between output-str* "\n"))])
-    (display output)))
+;;; CONSTANTS/DEFAULTS
+
+(define max-division-size (make-parameter 20))
+
+(define (! str #:max-division-size [mdv (max-division-size)] #:max-winners [mw (max-winners)])
+  (parameterize ([max-division-size mdv]
+                 [max-winners       mw])
+    (let* ([block*            (listing->block* str)]
+           [block+class*      (for/list ([block block*])
+                                (if (class-block? block)
+                                  (class-block->class block)
+                                  block))]
+           [class*            (filter class? block+class*)]
+           [superclass+class* (for/list ([block/class block+class*])
+                                (if (class? block/class)
+                                  block/class
+                                  (superclass-block->superclass class* block/class)))]
+           [output-str*       (map format-output superclass+class*)]
+           [output            (string-append* (add-between output-str* "\n"))])
+      (display output))))
 
 (define/match (class-block->class block)
   [((class-block command* name entry*))
@@ -89,7 +109,7 @@ inserting "super" clauses:
                    [(champ r-champ) (winner*->champs winner*)])
        (let ([matching-name* (map class-name matching)])
          (for ([cl cl*] #:unless (member cl matching-name*))
-              (error (format "Could not find class '~a' when generating superclass '~a'" cl name))))
+           (error (format "Could not find class '~a' when generating superclass '~a'" cl name))))
        (superclass name entry-count champ r-champ))]))
 
 (define/match (class->winner* cl)
@@ -100,11 +120,6 @@ inserting "super" clauses:
 (define/match (division->winner* div)
   [((division/simple _ _ _ winner*))       winner*]
   [((division/subclasses _ _ _ subclass*)) (append* (map subclass-winner* subclass*))])
-
-
-;;; CONSTANTS/DEFAULTS
-
-(define max-division-size 20)
 
 
 ;;; STRUCTS
@@ -135,7 +150,7 @@ inserting "super" clauses:
          [entry-count (set-count shuffled*)])
     (cond [(equal? cancelled-str (car entry*))
            #||#   (class/cancelled name (set) 0)]
-          [(entry-count . > . max-division-size)
+          [(entry-count . > . (max-division-size))
            #||#   (mk-class/divisions name shuffled* entry-count subclass-name*? mk-champs?)]
           [subclass-name*?
            #||#   (let ([constructor (if mk-champs? mk-class/subclasses+champs mk-class/subclasses)])
@@ -157,7 +172,7 @@ inserting "super" clauses:
     (class/simple name entry* entry-count winner*)))
 
 (define (mk-class/divisions name entry* entry-count subclass-name*? mk-champs?)
-  (let* ([size*     (mk-partition-size* max-division-size entry-count)]
+  (let* ([size*     (mk-partition-size* (max-division-size) entry-count)]
          [entry**   (split-set size* entry*)]
          [division* (mk-division* size* entry** subclass-name*? mk-champs?)])
     (class/divisions name entry* entry-count division*)))
@@ -187,28 +202,28 @@ inserting "super" clauses:
   (for/list ([size   size*]
              [entry* entry**]
              [ix     (in-naturals)])
-            (mk-division ix entry* size subclass-name*? mk-champs?)))
+    (mk-division ix entry* size subclass-name*? mk-champs?)))
 
 (define (mk-division ix entry* entry-count subclass-name*? mk-champs?)
   (cond [subclass-name*?
          (let ([subclass* (mk-subclasses entry* entry-count subclass-name*?)])
            (if mk-champs?
-               (let-values ([(champ r-champ) (subclass*->champs subclass*)])
-                 (division/subclasses+champs ix entry* entry-count subclass* champ r-champ))
-               (division/subclasses ix entry* entry-count subclass*)))]
+             (let-values ([(champ r-champ) (subclass*->champs subclass*)])
+               (division/subclasses+champs ix entry* entry-count subclass* champ r-champ))
+             (division/subclasses ix entry* entry-count subclass*)))]
         [else
          (let ([winner* (mk-winner* entry* entry-count)])
            (division/simple ix entry* entry-count winner*))]))
 
 (define (mk-subclasses entry* entry-count subclass-name*)
   (for/list ([name subclass-name*])
-            (let ([winner* (mk-winner* entry* entry-count)])
-              (subclass name winner*))))
+    (let ([winner* (mk-winner* entry* entry-count)])
+      (subclass name winner*))))
 
 (define (mk-winner* entry* entry-count)
   (let ([shuffled* (shuffle (set->list entry*))])
-    (for/list ([entry shuffled*] [place (in-range 1 (+ 1 max-winners))])
-              (winner place entry entry-count))))
+    (for/list ([entry shuffled*] [place (in-range 1 (+ 1 (max-winners)))])
+      (winner place entry entry-count))))
 
 (define (subclass*->champs subclass*)
   (let ([winner* (append* (map subclass-winner* subclass*))])
@@ -218,8 +233,8 @@ inserting "super" clauses:
   (let* ([shuffled*      (shuffle winner*)] ;; To keep tie-breaking sufficiently random
          [entry->points  (make-hash)]
          [_              (for ([winner shuffled*])
-                              (let ([points (winner->points winner)])
-                                (hash-update! entry->points (winner-entry winner) (λ (x) (+ x points)) 0)))]
+                           (let ([points (winner->points winner)])
+                             (hash-update! entry->points (winner-entry winner) (λ (x) (+ x points)) 0)))]
          [winner/points* (hash->list entry->points)]
          [sorted         (sort winner/points* > #:key cdr)]
          [champ          (car (car sorted))]
@@ -229,7 +244,7 @@ inserting "super" clauses:
 (define (winner->points wnr)
   (let ([place       (winner-place wnr)]
         [entry-count (winner-entry-count wnr)])
-    (+ 1 (- (min entry-count max-winners) place))))
+    (+ 1 (- (min entry-count (max-winners)) place))))
 
 
 ;;; PARSING
@@ -247,7 +262,7 @@ inserting "super" clauses:
 (define (read-block* in)
   (for/list ([block? (in-port read-block in)]
              #:break (not block?))
-            block?))
+    block?))
 
 ;; Skip initial empty lines, then read any number of non-empty lines.
 (define (read-block in)
@@ -258,12 +273,12 @@ inserting "super" clauses:
 (define (first-non-blank-line in)
   (for/first ([line    (in-port read-line in)]
               #:unless (blank-line? line))
-             (if (eof-object? line) #f line)))
+    (if (eof-object? line) #f line)))
 
 (define (non-blank-lines in)
   (for/list ([line   (in-lines in)]
              #:break (blank-line? line))
-            line))
+    line))
 
 (define (blank-line? str) (andmap char-whitespace? (string->list str)))
 
@@ -286,14 +301,14 @@ inserting "super" clauses:
 (define (read-command* in)
   (for/list ([char   (in-port peek-char in)]
              #:break (not (eq? char #\()))
-            (let ([command (read in)])
-              (skip-to-next-line in)
-              command)))
+    (let ([command (read in)])
+      (skip-to-next-line in)
+      command)))
 
 (define (skip-to-next-line in)
   (for ([char   (in-port read-char in)]
         #:break (eq? char #\newline))
-       (void)))
+    (void)))
 
 
 ;;; FORMATTING
@@ -375,8 +390,8 @@ inserting "super" clauses:
   (let* ([base   (format "~a" n)]
          [rem    (remainder n 10)]
          [suffix (if (and (10 . < . n) (n . < . 20))
-                     "th"
-                     (case rem
-                       [(1) "st"] [(2) "nd"] [(3) "rd"]
-                       [(0 4 5 6 7 8 9) "th"]))])
+                   "th"
+                   (case rem
+                     [(1) "st"] [(2) "nd"] [(3) "rd"]
+                     [(0 4 5 6 7 8 9) "th"]))])
     (string-append base suffix)))
