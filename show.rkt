@@ -65,6 +65,8 @@ inserting "super" clauses:
 (require "shared/main.rkt"
          srfi/2)
 
+(provide (rename-out [! run-show]))
+
 ;;; CONSTANTS/DEFAULTS
 
 (define max-division-size (make-parameter 20))
