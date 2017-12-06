@@ -21,7 +21,7 @@ Especially the first time you use the program, I recommend using the following p
 
 |#
 
-(require "shared/main.rkt"
+(require (only-in "shared/main.rkt" parse-show select)
          profile)
 
 (define verbose? (make-parameter #f))
@@ -36,46 +36,45 @@ Especially the first time you use the program, I recommend using the following p
       (when (not (null? new-entry**))
         (displayln "New Entries:\n")
         (for ([new-entry* new-entry**])
-             (for ([line new-entry*])
-                  (displayln line))
-             (displayln "")))
+          (for ([line new-entry*])
+            (displayln line))
+          (displayln "")))
       (displayln "Points Column:\n")
       (display column-str))))
 
 (define (get-new-entry* class* result*)
   (filter (λ (x) x)
           (for/list ([cl class*])
-                    (match-let* ([(class cl-name known-entry*) cl]
-                                 [res*           (filter (λ (res) (string-prefix? (select 'class res) cl-name)) result*)]
-                                 [current-entry* (for/list ([res res*]) (select 'name res))]
-                                 [new*           (remove-duplicates (remove* known-entry* current-entry*))])
-                      (if (not (null? new*))
-                          (cons (format "~a:" cl-name) (sort new* string<?))
-                          #f)))))
+            (match-let* ([(class cl-name known-entry*) cl]
+                         [res*           (filter (λ (res) (string-prefix? (select 'class res) cl-name)) result*)]
+                         [current-entry* (for/list ([res res*]) (select 'horse res))]
+                         [new*           (remove-duplicates (remove* known-entry* current-entry*))])
+              (and (not (null? new*))
+                   (cons (format "~a:" cl-name) (sort new* string<?)))))))
 
 (define-struct class (name entry*) #:transparent)
 
 (define (mk-column result* class?*)
   (let ([output-str**
          (for/list ([cl? class?*])
-                   (if (not cl?)
-                       '("")
-                       (match-let* ([(class cl-name known-entry*) cl?]
-                                    [res*           (filter (λ (res) (string-prefix? (select 'class res) cl-name)) result*)]
-                                    [name->points   (make-hash)]
-                                    [_              (for ([res res*])
-                                                         (let ([name   (select 'name res)]
-                                                               [points (select 'points res)])
-                                                           (hash-update! name->points name (λ (x) (+ x points)) 0)))]
-                                    [current-entry* (for/list ([res res*]) (select 'name res))]
-                                    [all-entry*     (remove-duplicates (append known-entry* current-entry*))]
-                                    [heading        (if (verbose?) (string-append "\t" cl-name) "")]
-                                    [points-str*    (for/list ([entry (sort all-entry* string-ci<?)])
-                                                              (let ([points (hash-ref name->points entry 0)])
-                                                                (if (verbose?)
-                                                                    (format "~a\t~a" points entry)
-                                                                    (~a points))))])
-                         (cons heading points-str*))))])
+           (if (not cl?)
+             '("")
+             (match-let* ([(class cl-name known-entry*) cl?]
+                          [res*           (filter (λ (res) (string-prefix? (select 'class res) cl-name)) result*)]
+                          [horse->points   (make-hash)]
+                          [_              (for ([res res*])
+                                            (let ([horse  (select 'horse res)]
+                                                  [points (select 'points res)])
+                                              (hash-update! horse->points horse (λ (x) (+ x points)) 0)))]
+                          [current-entry* (for/list ([res res*]) (select 'horse res))]
+                          [all-entry*     (remove-duplicates (append known-entry* current-entry*))]
+                          [heading        (if (verbose?) (string-append "\t" cl-name) "")]
+                          [points-str*    (for/list ([entry (sort all-entry* string-ci<?)])
+                                            (let ([points (hash-ref horse->points entry 0)])
+                                              (if (verbose?)
+                                                (format "~a\t~a" points entry)
+                                                (~a points))))])
+               (cons heading points-str*))))])
     (string-append* (add-between (append* output-str**) "\n"))))
 
 (define (parse-entrant-column str)
@@ -83,15 +82,15 @@ Especially the first time you use the program, I recommend using the following p
     (let*-values ([(acc current) (for/fold ([acc '()] [current '()])
                                            ([elem lst])
                                    (if (pred elem)
-                                       (if (null? current)
-                                           (values (list* (list elem) acc) '())
-                                           (values (list* (list elem) (reverse current) acc) '()))
-                                       (values acc (cons elem current))))]
+                                     (if (null? current)
+                                       (values (list* (list elem) acc) '())
+                                       (values (list* (list elem) (reverse current) acc) '()))
+                                     (values acc (cons elem current))))]
                   [(rev-result) (if (null? current) acc (cons (reverse current) acc))])
       (reverse rev-result)))
   (let* ([line*  (string-split str "\n")]
          [block* (isolate (λ (s) (regexp-match? #rx"^[:blank:]*$" s)) line*)])
     (for/list ([block block*])
-              (if (regexp-match? #px"^[:blank:]*$" (car block))
-                  #f
-                  (class (car block) (cdr block))))))
+      (if (regexp-match? #px"^[:blank:]*$" (car block))
+        #f
+        (class (car block) (cdr block))))))

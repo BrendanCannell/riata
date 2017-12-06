@@ -62,13 +62,14 @@ inserting "super" clauses:
 
 |#
 
-(require "shared/main.rkt"
+(require (only-in "shared/main.rkt" cancelled-str)
          srfi/2)
 
 (provide (rename-out [! run-show]))
 
 ;;; CONSTANTS/DEFAULTS
 
+(define max-winners       (make-parameter 6))
 (define max-division-size (make-parameter 20))
 
 (define (! str #:max-division-size [mdv (max-division-size)] #:max-winners [mw (max-winners)])
@@ -285,7 +286,7 @@ inserting "super" clauses:
 (define (blank-line? str) (andmap char-whitespace? (string->list str)))
 
 (define (parse-block block-str)
-  (with-handlers ([exn? (λ (_) (error "failed while parsing the following block:\n\n" block-str))])
+  (with-handlers ([exn? (λ (_) (error "failed while parsing block:\n\n" block-str))])
     (let* ([in          (open-input-string block-str)]
            [command*    (read-command* in)]
            [class-name? (let ([line (read-line in)])
@@ -328,7 +329,7 @@ inserting "super" clauses:
    #||#   (format "[b]~a[/b]\n~a\n" name cancelled-str)]
   
   [((class/simple name _ entry-count winner*))
-   #||#   (format-competition name #f #f entry-count winner*)]
+   #||#   (format-block name #f #f entry-count winner*)]
   
   [((class/divisions name _ _ division*))
    #||#   (let ([division-str* (map (curry format-division name) division*)])
@@ -343,7 +344,7 @@ inserting "super" clauses:
 (define (format-division class-name div)
   (match div
     [(division/simple ix _ entry-count winner*)
-     (format-competition class-name ix #f entry-count winner*)]
+     (format-block class-name ix #f entry-count winner*)]
     [(division/subclasses+champs ix _ entry-count subclass* champ r-champ)
      (format-subclasses+champs class-name ix entry-count subclass* champ r-champ)]
     [(division/subclasses ix _ entry-count subclass*)
@@ -360,9 +361,9 @@ inserting "super" clauses:
 
 (define (format-subclass class-name ix entry-count sub)
   (match-let* ([(subclass name winner*) sub])
-    (format-competition class-name ix name entry-count winner*)))
+    (format-block class-name ix name entry-count winner*)))
 
-(define (format-competition class-name ix subclass-name entry-count winner*)
+(define (format-block class-name ix subclass-name entry-count winner*)
   (let ([header      (format-header class-name ix subclass-name entry-count)]
         [winner-str* (map format-winner winner*)])
     (string-append* header winner-str*)))
