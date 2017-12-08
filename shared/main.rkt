@@ -13,37 +13,41 @@ parse-show goes block by block, using heuristic tests to classify blocks and dis
  |#
 
 (define (parse-show str)
-  (let*-values ([(block*)     (listing->block* str)]
-                [(init-state) (parse-show-header (car block*))]
-                [(result* _)  (for/fold ([result* '()] [state init-state])
-                                        ([block (cdr block*)])
-                                (match-let ([`(,res* ,state^) (parse-block block state)])
-                                  (values (append res* result*) state^)))])
-    result*))
+  (match-let* ([`(,show-header . ,rest) (listing->block* str)]
+               [init-state              (parse-show-header show-header)])
+    (let-values ([(result* _)
+                  (for/fold ([result* '()] [state init-state])
+                            ([block rest])
+                    (match-let ([`(,res* ,state^) (parse-block block state)])
+                      (values (append res* result*) state^)))])
+      result*)))
 
 (define (print-unrecognized str) (eprintf "Unrecognized: ~s\n" str))
 
-(define (listing->block* str) (regexp-split #rx"\n *\n" (string-trim str)))
+(define (listing->block* str) (regexp-split #px"\n\\s*\n" (string-trim str)))
 
 (define (parse-show-header str)
   (let*-values ([(line*) (string-split str "\n")]
                 [(show date unrecognized*)
                  (for/fold ([show #f] [date #f] [unrecognized* '()])
                            ([line line*])
-                   (define (! rx) (regexp-match rx line))
-                   (cond [(! #px"^.*?(?i:show name).\\s*(.*)$")
-                          => (match-lambda [`(,_ ,show^) (values show^ date unrecognized*)])]
-                         [(! #px"^.*?(?i:show date).\\s*(.*)$")
-                          => (match-lambda [`(,_ ,date^) (values show date^ unrecognized*)])]
-                         [(or (! #px"^.*?(?i:show host).\\s*(.*)$")
-                              (! #px"^.*?(?i:association/season).\\s*(.*)$")
-                              (! #px"^.*?(?i:notes?).\\s*(.*)$"))
-                          (values show date unrecognized*)]
-                         [else (values show date (cons line unrecognized*))]))])
+                   (match line
+                     [(regexp #px"^.*?(?i:show name).\\s*(.*)$"
+                              `(,_ ,show^))
+                      (values show^ date unrecognized*)]
+                     [(regexp #px"^.*?(?i:show date).\\s*(.*)$"
+                              `(,_ ,date^))
+                      (values show date^ unrecognized*)]
+                     [(or (regexp #px"^.*?(?i:show host).\\s*(.*)$")
+                          (regexp #px"^.*?(?i:association/season).\\s*(.*)$")
+                          (regexp #px"^.*?(?i:notes?).\\s*(.*)$"))
+                      (values show date unrecognized*)]
+                     [else
+                      (values show date (cons line unrecognized*))]))])
     (cond [(not show) (error "Could not find show name in header: " str)]
           [(not date) (error "Could not find show date in header: " str)]
-          [else       (map print-unrecognized unrecognized*)
-                      (hash 'show show 'date date)])))
+          [else (map print-unrecognized (reverse unrecognized*))
+                (hash 'show show 'date date)])))
 
 (define (parse-block block state)
   (cond [(cancelled-block? block) `(() ,state)]
@@ -80,9 +84,9 @@ parse-show goes block by block, using heuristic tests to classify blocks and dis
     [(regexp rx:prize-datum `(,_ ,place-str ,earnings-str))
      `(,(place-str->place place-str) ,(parse-earnings earnings-str))])
   #;(cond
-    [(regexp-match rx:prize-datum str)
-     => (match-lambda [(list _ place-str earnings-str)
-                       `(,(place-str->place place-str) ,(parse-earnings earnings-str))])]))
+      [(regexp-match rx:prize-datum str)
+       => (match-lambda [(list _ place-str earnings-str)
+                         `(,(place-str->place place-str) ,(parse-earnings earnings-str))])]))
 
 (define rx:prize-datum #px"((?i:[0-9]+(?:st|nd|rd|th)?|purse|rg|rgc|reserve grand champion|reserve grand|gc|grand champion|rc|rch|reserve champion|reserve|ch|champion|hm|honorable mention|win|place|show)) *(?:\\p{P})+ *\\$([0-9,]*)")
 
@@ -126,31 +130,31 @@ parse-show goes block by block, using heuristic tests to classify blocks and dis
     `(,class ,paired?)))
 
 #;(define (parse-header str)
-  (match-let* ([`(,entry-count-str ,entry-count) (parse-entry-count str)]
-               [class-name (header->class-name str entry-count-str)]
-               [paired?    (regexp-match? #px"\\b(?i:pair|pairs|pas de deux)\\b" str)])
-    `(,class-name ,entry-count ,paired?)))
+    (match-let* ([`(,entry-count-str ,entry-count) (parse-entry-count str)]
+                 [class-name (header->class-name str entry-count-str)]
+                 [paired?    (regexp-match? #px"\\b(?i:pair|pairs|pas de deux)\\b" str)])
+      `(,class-name ,entry-count ,paired?)))
 
 #;(define (parse-entry-count str)
-  (match (regexp-match rx:entry-count str)
-    [#f #f]
-    [`(,entry-count-str ,entry-count-digits)
-     `(,entry-count-str ,(string->number entry-count-digits))]))
+    (match (regexp-match rx:entry-count str)
+      [#f #f]
+      [`(,entry-count-str ,entry-count-digits)
+       `(,entry-count-str ,(string->number entry-count-digits))]))
 
 #;(define rx:entry-count #px"(?i:\\s*\\(\\s*([0-9]+)\\s+(?:entry|entries)\\s*\\)\\s*)")
 
 #;(define (header->class-name header entry-count-str)
-  (define prefix-rx* (let ([rx:letter-number       #px"^[a-zA-Z][0-9]+(?:\\p{P})*\\s*"]
-                           [rx:number-letter?      #px"^[0-9]+[a-zA-Z]?(?:\\p{P})*\\s*"]
-                           [rx:race-letter-number  #px"^Race [a-zA-Z][0-9]+(?:\\p{P})*\\s*"]
-                           [rx:race-number-letter? #px"^Race [0-9]+[a-zA-Z]?(?:\\p{P})*\\s*"])
-                       `(,rx:letter-number ,rx:number-letter? ,rx:race-letter-number ,rx:race-number-letter?)))
-  (let* ([header/no-entry-count
-          (string-trim header entry-count-str #:left? #f)]
-         [class-name (for/fold ([str header/no-entry-count])
-                               ([prefix-rx prefix-rx*])
-                       (string-replace str prefix-rx ""))])
-    class-name))
+    (define prefix-rx* (let ([rx:letter-number       #px"^[a-zA-Z][0-9]+(?:\\p{P})*\\s*"]
+                             [rx:number-letter?      #px"^[0-9]+[a-zA-Z]?(?:\\p{P})*\\s*"]
+                             [rx:race-letter-number  #px"^Race [a-zA-Z][0-9]+(?:\\p{P})*\\s*"]
+                             [rx:race-number-letter? #px"^Race [0-9]+[a-zA-Z]?(?:\\p{P})*\\s*"])
+                         `(,rx:letter-number ,rx:number-letter? ,rx:race-letter-number ,rx:race-number-letter?)))
+    (let* ([header/no-entry-count
+            (string-trim header entry-count-str #:left? #f)]
+           [class-name (for/fold ([str header/no-entry-count])
+                                 ([prefix-rx prefix-rx*])
+                         (string-replace str prefix-rx ""))])
+      class-name))
 
 
 
@@ -258,9 +262,9 @@ parse-show goes block by block, using heuristic tests to classify blocks and dis
 #;(define rx:result #px"^(\\P{P}*)(?:\\p{P})+\\s*(.*?)\\s+(?i:owned|leased|ridden|handled)\\s+by\\s+(.*?)(?:\\s+(?i:of|from|owned) .*?)?(?:\\s+\\p{P}+\\s+((?<!\\$)[0-9]+(?:\\.[0-9]+)?%?))?\\P{L}*?$")
 
 #;(define (parse-result str)
-  (match (regexp-match rx:result str)
-    [`(,_ ,place-str ,horse ,human ,score) `(,(place-str->place place-str) ,horse ,human ,score)]
-    [else #f]))
+    (match (regexp-match rx:result str)
+      [`(,_ ,place-str ,horse ,human ,score) `(,(place-str->place place-str) ,horse ,human ,score)]
+      [else #f]))
 
 #;(define (mk-points place entry-count)
     (let* ([winner-count (min entry-count (max-winners))]

@@ -62,7 +62,7 @@ inserting "super" clauses:
 
 |#
 
-(require (only-in "shared/main.rkt" cancelled-str)
+(require (only-in "shared/main.rkt" cancelled-str listing->block*)
          srfi/2)
 
 (provide (rename-out [! run-show]))
@@ -75,7 +75,7 @@ inserting "super" clauses:
 (define (! str #:max-division-size [mdv (max-division-size)] #:max-winners [mw (max-winners)])
   (parameterize ([max-division-size mdv]
                  [max-winners       mw])
-    (let* ([block*            (listing->block* str)]
+    (let* ([block*            (listing->parsed-block* str)]
            [block+class*      (for/list ([block block*])
                                 (if (class-block? block)
                                   (class-block->class block)
@@ -258,8 +258,8 @@ inserting "super" clauses:
 (define-struct (class-block block)      (command* name entry*) #:transparent)
 (define-struct (superclass-block block) (name class*) #:transparent)
 
-(define (listing->block* str)
-  (let ([block* (regexp-split #px"\n[:space:]*\n" (string-trim str))])
+(define (listing->parsed-block* str)
+  (let ([block* (listing->block* str)])
     (map parse-block block*)))
 
 (define (read-block* in)

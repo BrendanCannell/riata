@@ -37,7 +37,7 @@ Troubleshooting:
 
 (require "shared/main.rkt")
 
-(define (! str #:humans [humans? #f]
+(define (! str
            #:horse [horse? #f] #:horses [horses? #f]
            #:owner [owner? #f] #:owners [owners? #f]
            #:rider [rider? #f] #:riders [riders? #f]
@@ -47,17 +47,21 @@ Troubleshooting:
          [riders? (merge-selectors rider? riders? "rider")]
          [farms?  (merge-selectors farm?  farms?  "farm")]
          [result*     (parse-show str)]
-         [result*^    (filter*-field? 'horse horses? result*)]
-         [result*^^   (filter*-field? 'owner owners? result*^)]
-         [result*^^^  (filter*-field? 'rider riders? result*^^)]
-         [result*^^^^ (filter*-field? 'farm farms? result*^^^)]
+         [result*^    (filter-field? 'horse horses? result*)]
+         [result*^^   (filter-field? 'owner owners? result*^)]
+         [result*^^^  (filter-field? 'rider riders? result*^^)]
+         [result*^^^^ (filter-field? 'farm farms? result*^^^)]
          [value** (let ([output-field* '(horse date show class place earnings rider score)])
                     (for/list ([res result*^^^^]) (select* output-field* res)))])
     (display-csv* value**)
-    (printf "Total earnings: $~a\n" (get-total-earnings result*^^^^))))
+    (printf "Total earnings: $~a\n" (->total-earnings result*^^^^))))
 
-(define (filter*-field? field value*? input*)
-  (if value*? (filter*-field field value*? input*) input*))
+(define (filter-field? field value*? input*)
+  (match value*?
+    [#f      input*]
+    [value*  (define (value-in-value*? value)
+               (member (select field value) value*))
+             (filter value-in-value*? input*)]))
 
 (define (merge-selectors singular plural singular-str)
   (define (fail-both)
@@ -81,19 +85,13 @@ Troubleshooting:
 
 (define (display-csv* v**)
   (for ([v* v**])
-    (let* ([str* (for/list ([v v*] #:when v)
-                   (if (and (string? v) (string-contains? v ","))
-                     (~s v)
-                     (~a v)))])
-      (displayln (string-append* (add-between str* ","))))))
+    (let* ([v-str* (for/list ([v v*] #:when v)
+                     (if (and (string? v) (string-contains? v ","))
+                       (~s v)
+                       (~a v)))]
+           [csv    (string-join v-str* ",")])
+      (displayln csv))))
 
-(define (filter-field field value result*)
-  (filter*-field field (list value) result*))
-
-(define (filter*-field field value* result*)
-  (filter (λ (res) (member (select field res) value*)) result*))
-
-(define (listify val*/val)
-  (if (list? val*/val) val*/val (list val*/val)))
-
-(define (get-total-earnings result*) (apply + (map (λ (res) (select 'earnings res)) result*)))
+(define (->total-earnings result*)
+  (for/sum ([result result*])
+    (select 'earnings result)))
